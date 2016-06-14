@@ -1,0 +1,22 @@
+/*
+ *
+ */
+
+#include <abt.h>
+#include <abt-snoozer.h>
+#include <margo.h>
+
+int main(int argc, char **argv)
+{
+  
+}
+
+/*
+ * Local variables:
+ *  mode: C
+ *  c-indent-level: 4
+ *  c-basic-offset: 4
+ * End:
+ *
+ * vim: ts=8 sts=4 sw=4 expandtab
+ */
