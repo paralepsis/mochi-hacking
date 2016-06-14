@@ -65,14 +65,14 @@ int init_mercury(char *addr,
     if (*context_p == NULL) return -1;
 
     printf("Mercury Initialization:\n");
-    printf("  HG Class: %s\n", HG_Core_class_get_name(*class_p));
-    printf("  HG Protocol: %s\n", HG_Core_class_get_protocol(*class_p));
+    printf("  HG Class: %s\n", HG_Class_get_name(*class_p));
+    printf("  HG Protocol: %s\n", HG_Class_get_protocol(*class_p));
 
     if (listen) {
 	/* NOTE: These functions won't return valid results if not listening. */
 
-	HG_Core_addr_self(*class_p, &self_addr);
-	HG_Core_addr_to_string(*class_p, addr_buf, &bufsz, self_addr);
+	HG_Addr_self(*class_p, &self_addr);
+	HG_Addr_to_string(*class_p, addr_buf, &bufsz, self_addr);
 	printf("  HG Self Address (listening): %s\n", addr_buf);
     }
 
@@ -161,8 +161,6 @@ void finalize_mercury(hg_class_t *class, hg_context_t *context)
     HG_Finalize(class);
 }
 
-
-
 /*
  * Local variables:
  *  mode: C
@@ -172,4 +170,3 @@ void finalize_mercury(hg_class_t *class, hg_context_t *context)
  *
  * vim: ts=8 sts=4 sw=4 expandtab
  */
-
