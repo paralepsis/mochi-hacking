@@ -1,0 +1,108 @@
+#
+# Rob Ross, 6/14/2016
+#
+# Notes from discussion with Phil
+
+__General Mercury/Margo notes__
+
+Server:
+- Needs to look for requests
+- Needs to execute handlers
+
+Mercury has no thread on its own. You call HG functions to give it the
+thread of control. There are two (flavors of?) functions:
+- progress function - queues (but does not execute) callbacks
+- trigger function - calls the callbacks that have been queued
+
+Normally (i.e., without Margo) you would have a while loop calling progress
+until there's some things in the queue and then trigger until the queue is 
+empty. Margo replaces this (among other things).
+
+In Margo, we have two things going on:
+- Pushing on progress
+- Generating ULTs to handle callbacks
+
+When Margo is initialized, we give it one or more Argobots pools for
+these things. Could give it dedicated pools that provide dedicated
+execution streams, could have "main" stream do the work.
+
+As a reminder, HG RPC handlers (callbacks) are just C functions. If one wanted
+to do significant work in one of these handlers, it's problematic. Would need
+to build a state machine system, build a thread pool for executing callbacks,
+etc. Margo handles this by spinning up a ULT for each callback to execute.
+
+In general Phil suggests simply using the same pool for progress and handlers
+and using "ABT snoozer" to ensure that we aren't busy-waiting. In cases such as
+ABT-IO, we might want a separate execution stream, but that would be allocated
+to ABT-IO, not to the callbacks, etc. In other words, allocating the execution
+stream to the "resource" not to HG.
+
+As a side note, if the progress pool doesn't have its own execution
+stream (i.e., it's shared by the request handler side), then it will
+have to wake up periodically to manage these other things. Margo deals
+with this. But if you wanted to have a "pure", blocking progress
+thread, you would want a separate pool. So far no indication that it
+matters.
+
+As another side note, you can associate more than one execution stream
+to a pool, which would presumably allow more than one ULT to execute
+concurrently.
+
+__RPC__
+
+MERCURY_GEN_PROC()
+
+Macro used to define simple payloads and the associated encode/decode functions.
+
+HG RPCs have exactly one input struct and one output
+struct. MERCURY_GEN_PROC can generate handlers, etc., assuming that
+you only use types that Mercury understands. It will not compile if it
+doesn't understand a type.
+
+MERCURY_GEN_PROC also typedefs the struct and declares the functions
+for processing. These are then used by HG_Get_input/output(), which we believe
+uses the handle to figure out which of these functions to call.
+
+DECLARE_MARGO_RPC_HANDLER(fn)
+
+Defines a function that wraps "fn", called "fn_handler", to be called
+by HG as the callback. This does the spawn of the ULT, etc. It's up to
+the programmer to pass the _handler version to the register function
+(below).
+
+MERCURY_REGISTER(class, string, input, output, handler)
+
+string is a string name used to match incoming RPCs to handlers, so it had
+better match :).
+
+input is the input type as declared by MERCURY_GEN_PROC(). Can be void.
+output is same, can also be void.
+
+handler is the _handler function declared by the margo macro above.
+
+HG_Get_input() -- decodes input into local struct.
+
+HG_Get_info() -- used to get class, which is then used for memory
+registration, etc. Not needed unless we're doing bulk data movement.
+
+There's a mercury version of the "response" function, that I shouldn't use:
+  HD_Respond(handle, callback, arg, output) -- not wrapped in margo! 
+  callback and arg can be null
+  output is encoded automatically.
+
+Instead use: margo_respond(mid, handle, out). This is a blocking
+function, which is what you want since you're already in the context
+of a ULT, want to stay in that context while this executes.
+
+margo_addr_lookup() is a blocking call. It's worth noting that HG
+lookup is not...it's async, because in certain circumstances the HG
+_lookup is establishing comm. channels, etc. (e.g., CCI).
+
+HG_Create() gives a handle to test on, etc., that is passed to margo fns also.
+
+margo_forward() fires off the RPC. It also encodes the input structure using
+predefined encode function.
+
+HG_Free_output() frees any allocated memory if there was any. Good
+practice to always call.
+
