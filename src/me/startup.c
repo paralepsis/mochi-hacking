@@ -11,7 +11,8 @@ int init_mercury(char *addr,
 		 hg_class_t **class_p,
 		 hg_context_t **context_p);
 int init_argobots(int argc, char **argv, ABT_pool *pool_p);
-int init_margo(hg_context_t *context, ABT_pool pool, margo_instance_id *mid_p);
+int init_margo(hg_context_t *context, ABT_pool prog_pool,
+	       ABT_pool handler_pool, margo_instance_id *mid_p);
 void finalize_mercury(hg_class_t *class, hg_context_t *context);
 void finalize_argobots();
 void finalize_margo(margo_instance_id mid);
@@ -34,14 +35,44 @@ int main(int argc, char **argv)
 
     ret = init_argobots(argc, argv, &pool);
 
-    ret = init_margo(context, pool, &mid);
+    /* Note: Passing same pool twice, once for progress and once for 
+     * handler.
+     */
+    ret = init_margo(context, pool, pool, &mid);
 
+    finalize_margo(mid);
+
+    /* TODO: xstream join/free? would it be better to do in
+     * finalize_argobots()?
+     */
+
+    finalize_argobots();
     finalize_mercury(class, context);
 
     return 0;
 }
+/********** RPC **********/
+
+/*
+
+MERCURY_GEN_PROC()
+DECLARE_MARGO_RPC_HANDLER()
+
+
+ */
 
 /********** INITIALIZE **********/
+
+/* init_rpcs()
+ */
+int init_rpcs() 
+{
+    /* TODO: What assumptions are made about RPC initialization on both sides?
+     */
+
+    return 0;
+}
+
 
 /* init_mercury()
  *
@@ -60,7 +91,13 @@ int init_mercury(char *addr,
     *class_p = HG_Init(addr, listen);
     if (*class_p == NULL) return -1;
 
-    /* TODO: Is this really part of initialization? I don't think so. */
+    /* [ From John, 06/14/2016 ]
+       A context is akin to a queue for RPCs and bulk transfers (and
+       their callbacks) whereas a class is a handle for the network
+       resource, but we've never used more than one, and the network
+       progression model is actually bound to contexts rather than
+       classes.
+    */
     *context_p = HG_Context_create(*class_p);
     if (*context_p == NULL) return -1;
 
@@ -81,7 +118,9 @@ int init_mercury(char *addr,
 
 /* init_argobots(argc, argv, pool_p)
  *
- * Q: Why does argobots need argc and argv?
+ * Notes:
+ * - According to Sangmin (6/14/2016) Argobots ignores the argc 
+ *   and argv parameters to ABT_init() at this time.
  *
  * Returns 0 on success, non-zero on failure.
  */
@@ -97,7 +136,22 @@ int init_argobots(int argc, char **argv, ABT_pool *pool_p)
 	return ret;
     }
 
-    /* set primary ES to idle without polling */
+    /* [ From Phil ]
+       An ES (execution stream, or xstream), is an OS-level thread or
+       process that is capable of running user level threads or
+       tasklets. The "primary ES" is the implicit main() thread that
+       you have as soon as execution starts.
+
+       Setting an ES to "idle without polling" means activating the
+       abt-snoozer scheduler for that ES so that when that ES runs out
+       of execution work to do (either because there are no threads to
+       run, or because all of the threads are blocked on I/O) it will
+       sleep gracefully rather than just busy while() loop looking for
+       work.
+
+       It has its own explicit API function because it is kind of a
+       special case to find and identify the main() thread.
+    */
     ret = ABT_snoozer_xstream_self_set();
     if (ret != 0) {
 	fprintf(stderr, "ABT_snoozer_xstream_self_set: ?\n");
@@ -126,10 +180,22 @@ int init_argobots(int argc, char **argv, ABT_pool *pool_p)
 }
 
 /* init_margo(context, pool, mid)
+ *
+ * Note:
+ * - Using the margo_init_pool() version rather than the higher-level 
+ *   margo_init() function in order to force myself to understand what is
+ *   going on in Argobots. Notionally I don't have to see the details.
  */
-int init_margo(hg_context_t *context, ABT_pool pool, margo_instance_id *mid_p)
+int init_margo(hg_context_t *context, ABT_pool prog_pool, ABT_pool handler_pool,
+	       margo_instance_id *mid_p)
 {
-    *mid_p = margo_init_pool(pool, ABT_POOL_NULL, context);
+    /*
+      First parameter is a progress pool, second a "handler" pool. The second
+      pool is unnecessary if one isn't going to receive incoming RPCs, and
+      ABT_POOL_NULL can be passed in in that case.
+     */
+    *mid_p = margo_init_pool(prog_pool, handler_pool, context);
+    if (*mid_p == MARGO_INSTANCE_NULL) return -1;
 
     printf("Margo Initialization:\n  <done>\n");
 
