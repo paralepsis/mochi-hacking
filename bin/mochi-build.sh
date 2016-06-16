@@ -10,7 +10,7 @@
 #
 export PATH="/Users/rross/local/bin:$PATH"
 export LD_LIBRARY_PATH="/Users/rross/local/lib:$LD_LIBRARY_PATH"
-export DYLD_LIBRARY_PATH="/Users/rross/local/lib:$LD_LIBRARY_PATH"
+export DYLD_LIBRARY_PATH="/Users/rross/local/lib:$DYLD_LIBRARY_PATH"
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/Users/rross/local/lib/pkgconfig"
 
 # Test logs are in <build directory>/Testing/Temporary/LastTest.log
@@ -218,6 +218,74 @@ cd $SRCDIR
 git clone git@xgitlab.cels.anl.gov:sds/abt-io.git
 cd abt-io 
 ./prepare.sh
+patch -N -p1<<"EOF"
+diff --git a/examples/abt-io-overlap.c b/examples/abt-io-overlap.c
+index 5577877..c60ebb5 100644
+--- a/examples/abt-io-overlap.c
++++ b/examples/abt-io-overlap.c
+@@ -17,6 +17,10 @@
+ #include <abt-io.h>
+ #include <abt-snoozer.h>
+ 
++#ifndef O_DIRECT
++#define O_DIRECT 0
++#endif
++
+ struct worker_ult_common
+ {
+     int opt_io;
+@@ -244,7 +248,7 @@ static void worker_ult(void *_arg)
+         }
+         else
+         {
+-            fd = mkostemp(template, O_DIRECT|O_SYNC);
++            fd = mkstemp(template);
+             if(fd < 0)
+             {
+                 perror("mkostemp");
+diff --git a/examples/concurrent-write-bench.c b/examples/concurrent-write-bench.c
+index b661f6c..cf75bba 100644
+--- a/examples/concurrent-write-bench.c
++++ b/examples/concurrent-write-bench.c
+@@ -17,6 +17,10 @@
+ #include <abt-io.h>
+ #include <abt-snoozer.h>
+ 
++#ifndef O_DIRECT
++#define O_DIRECT 0
++#endif
++
+ /* This is a simple benchmark that measures the
+  * streaming, concurrent, sequentially-issued write throughput for a 
+  * specified number of concurrent operations.  It includes an abt-io version and
+diff --git a/examples/pthread-overlap.c b/examples/pthread-overlap.c
+index 1a6a8e7..9a849cd 100644
+--- a/examples/pthread-overlap.c
++++ b/examples/pthread-overlap.c
+@@ -140,7 +140,7 @@ static void *worker_pthread(void *_arg)
+ 
+     if(common->opt_io)
+     {
+-        fd = mkostemp(template, O_DIRECT|O_SYNC);
++        fd = mkstemp(template);
+         if(fd < 0)
+         {
+             perror("mkostemp");
+diff --git a/src/abt-io.c b/src/abt-io.c
+index cf41b83..9af6dd7 100644
+--- a/src/abt-io.c
++++ b/src/abt-io.c
+@@ -297,7 +297,7 @@ static void abt_io_mkostemp_fn(void *foo)
+ {
+     struct abt_io_mkostemp_state *state = foo;
+ 
+-    *state->ret = mkostemp(state->template, state->flags);
++    *state->ret = mkstemp(state->template);
+     if(*state->ret < 0)
+         *state->ret = -errno;
+ 
+ 
+EOF
 install -d build
 cd build
 ../configure --prefix=${INSTDIR} CFLAGS="-g -Wall" \

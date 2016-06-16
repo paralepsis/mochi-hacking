@@ -5,6 +5,33 @@
 #include <abt.h>
 #include <abt-snoozer.h>
 #include <margo.h>
+#include <assert.h>
+#include <sys/time.h>
+
+/*
+  MERCURY_GEN_PROC: Macro used to define simple payloads and the
+  associated encode/decode functions.
+
+  HG RPCs have exactly one input struct and one output struct.
+  MERCURY_GEN_PROC can generate handlers, etc., assuming that you only
+  use types that Mercury understands. It will not compile if it
+  doesn't understand a type.
+
+  MERCURY_GEN_PROC also typedefs the struct and declares the functions
+  for processing. These are then used by HG_Get_input/output(), which we
+  believe uses the handle to figure out which of these functions to
+  call.
+*/
+MERCURY_GEN_PROC(rtt_in_t,((int64_t) (sec)) ((int32_t) (usec)))
+MERCURY_GEN_PROC(rtt_out_t, ((int64_t) (sec)) ((int32_t) (usec)))
+
+/*
+ DECLARE_MARGO_RPC_HANDLER(fn): Defines a function that wraps "fn",
+ called "fn_handler", to be called by HG as the callback. This does the
+ spawn of the ULT, etc. It's up to the programmer to pass the _handler
+ version to the register function (below).
+*/
+DECLARE_MARGO_RPC_HANDLER(rtt_ult)
 
 int init_mercury(char *addr,
 		 int listen,
@@ -13,6 +40,8 @@ int init_mercury(char *addr,
 int init_argobots(int argc, char **argv, ABT_pool *pool_p);
 int init_margo(hg_context_t *context, ABT_pool prog_pool,
 	       ABT_pool handler_pool, margo_instance_id *mid_p);
+int init_rpcs(hg_class_t *class, hg_id_t *rpcid_p);
+
 void finalize_mercury(hg_class_t *class, hg_context_t *context);
 void finalize_argobots();
 void finalize_margo(margo_instance_id mid);
@@ -26,19 +55,49 @@ int main(int argc, char **argv)
     margo_instance_id mid;
     char localhost[] = "bmi+tcp://localhost:9000\0";
 
-    if (argc < 2) {
-	ret = init_mercury(localhost, 1, &class, &context);
-    }
-    else {
-	ret = init_mercury(argv[1], 1, &class, &context);
-    }
+    hg_id_t rpcid;
+    hg_handle_t h;
+    hg_addr_t svr;
+    rtt_in_t in;
+    rtt_out_t out;
+    struct timeval t;
+
+    /*** INITIALIZE ***/
+
+    ret = init_mercury((argc > 1) ? argv[1] : localhost, 1, &class, &context);
+    assert(!ret);
 
     ret = init_argobots(argc, argv, &pool);
+    assert(!ret);
 
     /* Note: Passing same pool twice, once for progress and once for 
      * handler.
      */
     ret = init_margo(context, pool, pool, &mid);
+    assert(!ret);
+
+    ret = init_rpcs(class, &rpcid);
+    assert(!ret);
+
+    /*** DO FUN STUFF ***/
+
+    ret = margo_addr_lookup(mid, (argc > 1) ? argv[1] : localhost, &svr);
+    assert(!ret);
+
+    ret = HG_Create(context, svr, rpcid, &h);
+    assert(!ret);
+
+    ret = gettimeofday(&t, NULL);
+    assert(!ret);
+    in.sec  = (int64_t) t.tv_sec;
+    in.usec = (int32_t) t.tv_usec;
+    ret = margo_forward(mid, h, &in);
+    assert(!ret);
+
+    ret = HG_Get_output(h, &out);
+    assert(!ret);
+
+    /*** FINALIZE ***/
 
     finalize_margo(mid);
 
@@ -51,28 +110,21 @@ int main(int argc, char **argv)
 
     return 0;
 }
-/********** RPC **********/
-
-/*
-
-MERCURY_GEN_PROC()
-DECLARE_MARGO_RPC_HANDLER()
-
-
- */
 
 /********** INITIALIZE **********/
 
 /* init_rpcs()
  */
-int init_rpcs() 
+int init_rpcs(hg_class_t *class, hg_id_t *rpcid_p) 
 {
     /* TODO: What assumptions are made about RPC initialization on both sides?
+     *
+     * TODO: What's the NULL in MERCURY_REGISTER?
      */
+    *rpcid_p = MERCURY_REGISTER(class, "rtt", rtt_in_t, rtt_out_t, NULL);
 
     return 0;
 }
-
 
 /* init_mercury()
  *
@@ -174,7 +226,12 @@ int init_argobots(int argc, char **argv, ABT_pool *pool_p)
     }
 
     /* TODO: What diagnostics are available from argobots? */
-    printf("Argobots Initialization:\n  <done>\n");
+    printf("Argobots Initialization:\n");
+    ABT_info_print_config(stdout);
+
+#if 0
+    ABT_info_print_all_xstreams(stdout);
+#endif
 
     return 0;
 }
