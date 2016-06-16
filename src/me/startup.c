@@ -8,6 +8,21 @@
 #include <assert.h>
 #include <sys/time.h>
 
+int init_mercury(char *addr,
+		 int listen,
+		 hg_class_t **class_p,
+		 hg_context_t **context_p);
+int init_argobots(int argc, char **argv, ABT_pool *pool_p);
+int init_margo(hg_context_t *context, ABT_pool prog_pool,
+	       ABT_pool handler_pool, margo_instance_id *mid_p);
+int init_rpcs(hg_class_t *class, hg_id_t *rpcid_p);
+
+void rtt_ult(hg_handle_t h);
+
+void finalize_mercury(hg_class_t *class, hg_context_t *context);
+void finalize_argobots();
+void finalize_margo(margo_instance_id mid);
+
 /*
   MERCURY_GEN_PROC: Macro used to define simple payloads and the
   associated encode/decode functions.
@@ -30,21 +45,12 @@ MERCURY_GEN_PROC(rtt_out_t, ((int64_t) (sec)) ((int32_t) (usec)))
  called "fn_handler", to be called by HG as the callback. This does the
  spawn of the ULT, etc. It's up to the programmer to pass the _handler
  version to the register function (below).
+
+ This needs to be matched with a DEFINE_MARGO_RPC_HANDLER() after the function
+ is defined.
 */
 DECLARE_MARGO_RPC_HANDLER(rtt_ult)
 
-int init_mercury(char *addr,
-		 int listen,
-		 hg_class_t **class_p,
-		 hg_context_t **context_p);
-int init_argobots(int argc, char **argv, ABT_pool *pool_p);
-int init_margo(hg_context_t *context, ABT_pool prog_pool,
-	       ABT_pool handler_pool, margo_instance_id *mid_p);
-int init_rpcs(hg_class_t *class, hg_id_t *rpcid_p);
-
-void finalize_mercury(hg_class_t *class, hg_context_t *context);
-void finalize_argobots();
-void finalize_margo(margo_instance_id mid);
 
 int main(int argc, char **argv)
 {
@@ -61,6 +67,7 @@ int main(int argc, char **argv)
     rtt_in_t in;
     rtt_out_t out;
     struct timeval t;
+    float rtt;
 
     /*** INITIALIZE ***/
 
@@ -87,6 +94,7 @@ int main(int argc, char **argv)
     ret = HG_Create(context, svr, rpcid, &h);
     assert(!ret);
 
+    /* Note: this protocol is poorly conceived. */
     ret = gettimeofday(&t, NULL);
     assert(!ret);
     in.sec  = (int64_t) t.tv_sec;
@@ -96,6 +104,11 @@ int main(int argc, char **argv)
 
     ret = HG_Get_output(h, &out);
     assert(!ret);
+
+    ret = gettimeofday(&t, NULL);
+    
+    rtt = (t.tv_sec - in.sec)*1000.0 + (t.tv_usec - in.usec)/1000.0;
+    printf("RTT = %.2f msec\n", rtt);
 
     /*** FINALIZE ***/
 
@@ -119,12 +132,50 @@ int init_rpcs(hg_class_t *class, hg_id_t *rpcid_p)
 {
     /* TODO: What assumptions are made about RPC initialization on both sides?
      *
-     * TODO: What's the NULL in MERCURY_REGISTER?
+     * NOTE: Need to append "_handler" on the handler function name to account
+     *       for margo function wrapper.
      */
-    *rpcid_p = MERCURY_REGISTER(class, "rtt", rtt_in_t, rtt_out_t, NULL);
+    *rpcid_p = MERCURY_REGISTER(class, "rtt", rtt_in_t, rtt_out_t,
+				rtt_ult_handler);
+
+
 
     return 0;
 }
+
+/* rtt_ult
+ */
+void rtt_ult(hg_handle_t h)
+{
+    int ret;
+    rtt_in_t in;
+    rtt_out_t out;
+    struct timeval t;
+    struct hg_info *hgi;
+    margo_instance_id mid;
+
+    ret = HG_Get_input(h, &in);
+    assert(ret == HG_SUCCESS);
+
+    ret = gettimeofday(&t, NULL);
+    assert(!ret);
+    out.sec  = (int64_t) t.tv_sec;
+    out.usec = (int32_t) t.tv_usec;
+
+#if 0
+    ret = HG_Respond(h, NULL, NULL &out);
+    assert(ret == HG_SUCCESS);
+#else
+    hgi = HG_Get_info(h);
+    mid = margo_hg_class_to_instance(hgi->hg_class);
+    ret = margo_respond(mid, h, &out);
+    assert(!ret);
+#endif
+
+    HG_Destroy(h);
+    return;
+}
+DEFINE_MARGO_RPC_HANDLER(rtt_ult)
 
 /* init_mercury()
  *
