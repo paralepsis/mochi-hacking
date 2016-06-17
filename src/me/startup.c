@@ -280,9 +280,7 @@ int init_argobots(int argc, char **argv, ABT_pool *pool_p)
     printf("Argobots Initialization:\n");
     ABT_info_print_config(stdout);
 
-#if 0
     ABT_info_print_all_xstreams(stdout);
-#endif
 
     return 0;
 }
