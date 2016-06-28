@@ -16,3 +16,6 @@ src/margo-example/my-rpc.o: src/margo-example/my-rpc.c
 
 src/me/startup: src/me/startup.c
 	$(CC) $(CFLAGS) $(INCLUDEDIRS) -o $@ $< $(LIBDIRS) $(LIBS)
+
+src/me/rdma: src/me/rdma.c
+	$(CC) $(CFLAGS) $(INCLUDEDIRS) -o $@ $< $(LIBDIRS) $(LIBS)
