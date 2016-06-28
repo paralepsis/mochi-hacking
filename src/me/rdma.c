@@ -80,6 +80,17 @@ int main(int argc, char **argv)
     v = malloc(vsz);
     assert(v);
 
+    /* 
+     Hi Rob and Phil,
+
+     If you want to forward/execute in the same process, you have to
+     send to yourself, i.e. you call HG_Addr_self() and you pass the
+     addr that you get to the forward call... In that case, it should
+     not go to the NA layer.
+
+     So I guess in the example, you'd pass that to the margo_forward call?
+    */
+
     ret = margo_addr_lookup(mid, (argc > 1) ? argv[1] : localhost, &svr);
     assert(!ret);
 
@@ -145,6 +156,7 @@ void list_membership_ult(hg_handle_t h)
     margo_instance_id mid;
     hg_size_t sz;
     hg_bulk_t lbh; /* local bulk handle */
+    void *p;
 
     ret = HG_Get_input(h, &in);
     assert(ret == HG_SUCCESS);
@@ -159,7 +171,9 @@ void list_membership_ult(hg_handle_t h)
     mid = margo_hg_class_to_instance(hgi->hg_class);
 
     sz = 2*sizeof(member_t);
-    ret = HG_Bulk_create(hgi->hg_class, 1, (void **) &list, &sz,
+    p = list;
+    printf("%lx\n", (void **) &p);
+    ret = HG_Bulk_create(hgi->hg_class, 1, (void **) &p, &sz,
 			 HG_BULK_READ_ONLY, &lbh);
     assert(!ret);
 
