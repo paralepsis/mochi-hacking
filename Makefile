@@ -19,3 +19,14 @@ src/me/startup: src/me/startup.c
 
 src/me/rdma: src/me/rdma.c
 	$(CC) $(CFLAGS) $(INCLUDEDIRS) -o $@ $< $(LIBDIRS) $(LIBS)
+
+src/discovery/hg-sv-disc.o: src/discovery/hg-sv-disc.c
+	$(CC) $(CFLAGS) $(INCLUDEDIRS) -Isrc/discovery -o $@ -c $< 
+
+src/discovery/init.o: src/discovery/init.c
+	$(CC) $(CFLAGS) $(INCLUDEDIRS) -Isrc/discovery -o $@ -c $< 
+
+src/discovery/hg-disc-svr: src/discovery/hg-disc-svr.c src/discovery/init.o src/discovery/hg-sv-disc.o
+	$(CC) $(CFLAGS) $(INCLUDEDIRS) -Isrc/discovery -o $@ $< $(LIBDIRS) \
+	      $(LIBS) src/discovery/init.o src/discovery/hg-sv-disc.o
+
