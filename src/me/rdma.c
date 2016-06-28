@@ -40,6 +40,14 @@ member_t list[3] = { {"bmi+tcp://localhost:8000\0"},
 		     {"bmi+tcp://localhost:8001\0"},
 		     {"bmi+tcp://localhost:8002\0"}};
 
+void print_list(member_t *p, int ct) {
+    int i;
+
+    for (i=0; i < ct; i++) {
+	printf("  [%d] %s\n", i, p[i].addr);
+    }
+}
+
 int main(int argc, char **argv)
 {
     int ret;
@@ -75,6 +83,9 @@ int main(int argc, char **argv)
     ret = init_rpcs(class, &rpcid);
     assert(!ret);
 
+    printf("Original list:\n");
+    print_list(list, 3);
+
     /*** DO FUN STUFF ***/
     vsz = 2*sizeof(member_t);
     v = malloc(vsz);
@@ -109,6 +120,9 @@ int main(int argc, char **argv)
 
     ret = HG_Get_output(h, &out);
     assert(!ret);
+
+    printf("Received list:\n");
+    print_list(list, 2);
 
     /*** FINALIZE ***/
 
@@ -172,7 +186,7 @@ void list_membership_ult(hg_handle_t h)
 
     sz = 2*sizeof(member_t);
     p = list;
-    printf("%lx\n", (void **) &p);
+    /* printf("%lx\n", (void **) &p); */
     ret = HG_Bulk_create(hgi->hg_class, 1, (void **) &p, &sz,
 			 HG_BULK_READ_ONLY, &lbh);
     assert(!ret);
